@@ -1,16 +1,10 @@
 CREATE TABLE IOC (
-    ioc_id integer not null,
+    id integer not null,
     condition varchar
 );
 
-CREATE TABLE Attribute (
-    attribute_id integer not null,
-    attribute_type_id integer,
-    attribute_value varchar,
-    refs integer[]
-);
-
-CREATE TABLE Attribute_type (
-    attribute_type_id integer not null,
-    description varchar
+CREATE TABLE attribute (
+    id integer not null,
+    value varchar,
+    refs bigint[]
 );

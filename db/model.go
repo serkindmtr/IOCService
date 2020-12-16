@@ -17,15 +17,6 @@ type HashData struct {
 	RelatedAttributes []int64
 }
 
-type HashDataFromDB struct {
-	Ioc               string        `gorm:"type:json"`
-	RelatedAttributes pq.Int64Array `gorm:"type:integer[]"`
-}
-
-func (HashDataFromDB) TableName() string {
-	return "hash_table"
-}
-
 type IocFromHashTable struct {
 	Ioc       int64  `json:"ioc_id"`
 	Condition string `json:"condition"`
