@@ -2,11 +2,9 @@ package checker
 
 import (
 	"IOCService/db"
-	"encoding/json"
+	"IOCService/service/conditionVerdictProvider"
 	"github.com/jinzhu/gorm"
 	"log"
-	"sort"
-	"strconv"
 )
 
 func Check(attributeValues []string) ([]int64, error) {
@@ -47,12 +45,7 @@ func Check(attributeValues []string) ([]int64, error) {
 		})
 	}
 
-	err = InsertHashData(database, hashData)
-	if err != nil {
-		return []int64{}, err
-	}
-
-	result, err := ProvideVerdict(database)
+	result, err := provideVerdict(hashData)
 	if err != nil {
 		return []int64{}, err
 	}
@@ -92,98 +85,20 @@ func GetConditionAssociatedWithIOCs(database *gorm.DB, iocIds []int64) ([]db.Con
 	return rows, nil
 }
 
-//INSERT INTO hash_table VALUES ('{ "ioc_id": 1, "condition": "nil"}', '{1,2,3}')
-func InsertHashData(database *gorm.DB, hashData []db.HashData) error {
-	sqlInsert := "INSERT INTO hash_table VALUES "
-	firstRaw := true
+func provideVerdict(hashData []db.HashData) ([]int64, error) {
+	var iocIds []int64
 	for _, hashDatum := range hashData {
-		if firstRaw {
-			sqlInsert = sqlInsert + "("
-			for iocId, conditionValue := range hashDatum.Ioc {
-				sqlInsert = sqlInsert + "'{ \"ioc_id\": " + strconv.FormatInt(iocId, 10) + ", "
-				sqlInsert = sqlInsert + "\"condition\": " + conditionValue + "}', "
+		for iocId, condition := range hashDatum.Ioc {
+			result, err := conditionVerdictProvider.GetVerdict(condition, hashDatum.RelatedAttributes)
+			if err != nil {
+				return []int64{}, err
 			}
-			sqlInsert = sqlInsert + "'{"
-			firstAttributeId := true
-			for _, attributeId := range hashDatum.RelatedAttributes {
-				if firstAttributeId {
-					sqlInsert = sqlInsert + strconv.FormatInt(attributeId, 10)
-					firstAttributeId = false
-				} else {
-					sqlInsert = sqlInsert + ", " + strconv.FormatInt(attributeId, 10)
-				}
+
+			if result {
+				iocIds = append(iocIds, iocId)
 			}
-			sqlInsert = sqlInsert + "}')"
-			firstRaw = false
-		} else {
-			sqlInsert = sqlInsert + ", ("
-			for iocId, conditionValue := range hashDatum.Ioc {
-				sqlInsert = sqlInsert + "'{ \"ioc_id\": " + strconv.FormatInt(iocId, 10) + ", "
-				sqlInsert = sqlInsert + "\"condition\": " + conditionValue + "}', "
-			}
-			sqlInsert = sqlInsert + "'{"
-			firstAttributeId := true
-			for _, attributeId := range hashDatum.RelatedAttributes {
-				if firstAttributeId {
-					sqlInsert = sqlInsert + strconv.FormatInt(attributeId, 10)
-					firstAttributeId = false
-				} else {
-					sqlInsert = sqlInsert + ", " + strconv.FormatInt(attributeId, 10)
-				}
-			}
-			sqlInsert = sqlInsert + "}')"
 		}
 	}
 
-	err := database.Exec(sqlInsert).Error
-	if err != nil {
-		log.Printf(err.Error())
-
-		return err
-	}
-
-	return nil
-}
-
-func ProvideVerdict(database *gorm.DB) ([]int64, error) {
-	var iocs []int64
-	var hashData []db.HashDataFromDB
-
-	err := database.Find(&hashData).Error
-	if err != nil {
-		log.Printf(err.Error())
-
-		return []int64{}, err
-	}
-
-	for _, hashDatum := range hashData {
-		var iocFromHashTable db.IocFromHashTable
-		err = json.Unmarshal([]byte(hashDatum.Ioc), &iocFromHashTable)
-		if err != nil {
-			log.Printf("Unexpected error")
-		}
-		result, err := CheckCondition(iocFromHashTable.Condition, hashDatum.RelatedAttributes)
-		if err != nil {
-			return []int64{}, err
-		}
-
-		if result {
-			iocs = append(iocs, iocFromHashTable.Ioc)
-		}
-	}
-
-	return iocs, nil
-}
-
-func CheckCondition(condition string, attributeIds []int64) (bool, error) {
-	if attributeId, err := strconv.ParseInt(condition, 10, 64); err == nil {
-		i := sort.Search(len(attributeIds), func(i int) bool { return attributeId == attributeIds[i] })
-		if i < len(attributeIds) && attributeIds[i] == attributeId {
-			return true, nil
-		} else {
-			return false, nil
-		}
-	}
-
-	return false, nil
+	return iocIds, nil
 }
